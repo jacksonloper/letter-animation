@@ -9,6 +9,8 @@ on:
 jobs:
   push-to-replicate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout code
