@@ -80,6 +80,19 @@ Output:
 - `metrics_comparison.png`: Quantitative metrics
 - `comparison_summary.txt`: Statistical summary
 
+### 5. `test_concepts.py`
+Verifies the mathematical implementations without requiring model download.
+
+```bash
+python scripts/test_concepts.py
+```
+
+This script:
+- Tests Hamiltonian equation structure and energy conservation
+- Tests Freidlin-Wentzell action computation
+- Tests score function approximation concept
+- Runs quickly without needing the actual DDPM model
+
 ## Installation
 
 Install dependencies using pip:
