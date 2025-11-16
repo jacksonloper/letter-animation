@@ -40,3 +40,14 @@ dist/
 tmp/
 temp/
 *.tmp
+
+# Test outputs
+test_*.png
+test_*.txt
+hamiltonian_trajectory.png
+hamiltonian_trajectory_energy.png
+instanton_path.png
+instanton_path_history.png
+detailed_comparison.png
+metrics_comparison.png
+comparison_summary.txt
