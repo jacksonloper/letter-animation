@@ -1,0 +1,71 @@
+name: Test SD3 SLERP App
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'app_sd3_slerp.py'
+      - '.github/workflows/test-sd3-slerp.yml'
+
+# Require admin approval for workflow runs
+# This prevents random people's PRs from running expensive GPU workflows
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Only run on PRs from trusted sources or after approval
+    environment: 
+      name: modal-gpu-tests
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Modal CLI
+        run: |
+          pip install modal
+      
+      - name: Set up Modal credentials
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal token set --token-id "$MODAL_TOKEN_ID" --token-secret "$MODAL_TOKEN_SECRET"
+      
+      - name: Create HF token secret in Modal
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Check if secret exists, create/update it
+          modal secret create hf-token HF_TOKEN="$HF_TOKEN" || \
+          echo "Secret may already exist, continuing..."
+      
+      - name: Test SD3 SLERP app with minimal config
+        run: |
+          # Run with just 2 frames for quick testing
+          modal run app_sd3_slerp.py \
+            --prompt "test image" \
+            --output-name "ci_test.mp4" \
+            --num-frames 2 \
+            --num-inference-steps 10 \
+            --width 512 \
+            --height 512
+      
+      - name: Verify output
+        run: |
+          # Check that the video was created in the Modal volume
+          modal volume ls sd3-slerp-videos | grep ci_test.mp4 || \
+          (echo "Video file not found in Modal volume" && exit 1)
+      
+      - name: Cleanup test artifacts
+        if: always()
+        run: |
+          # Clean up test video from Modal volume
+          modal volume rm sd3-slerp-videos ci_test.mp4 || true

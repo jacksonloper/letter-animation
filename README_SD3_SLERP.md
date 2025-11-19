@@ -82,7 +82,7 @@ modal volume ls sd3-slerp-videos
 ## Technical Details
 
 - **Model**: Stable Diffusion 3.5 Large (can be switched to `-large-turbo` variant in the code)
-- **GPU**: Runs on Modal A10G GPU
+- **GPU**: Runs on Modal L4 GPU
 - **Model Caching**: Weights cached in `sd3-model-cache` Modal volume (persists across runs)
 - **Latent Space**: 16 channels, 8x downsampling (128x128 latents for 1024x1024 images)
 - **Video Codec**: H.264 (MP4 container)
@@ -91,7 +91,7 @@ modal volume ls sd3-slerp-videos
 ## Performance Notes
 
 - Generation time depends on `num_frames` and `num_inference_steps`
-- Typical generation: ~30 seconds per frame on A10G
+- Typical generation: ~30 seconds per frame on L4
 - 16 frames with 28 steps: approximately 8-10 minutes total
 - **First run**: Includes model download time (~10GB, 5-10 minutes depending on network)
 - **Subsequent runs**: Model loaded from cache (much faster startup)

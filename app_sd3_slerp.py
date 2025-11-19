@@ -153,7 +153,7 @@ def write_video(frames: List, out_path: str, fps: int = 8):
 
 @app.function(
     image=image,
-    gpu=modal.gpu.A10G(),  # A10G GPU for efficient SD3.5 inference
+    gpu=modal.gpu.L4(),  # L4 GPU for efficient SD3.5 inference
     secrets=[modal.Secret.from_name("hf-token")],  # Hugging Face token from Modal secret
     volumes={
         "/videos": volume,
