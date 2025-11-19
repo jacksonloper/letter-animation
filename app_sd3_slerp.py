@@ -34,6 +34,7 @@ image = (
         "safetensors>=0.4.0",
         "opencv-python-headless>=4.8.0",
         "Pillow>=10.0.0",
+        "sentencepiece>=0.1.99",  # Required for SD3.5 tokenizer
     )
 )
 
@@ -153,7 +154,7 @@ def write_video(frames: List, out_path: str, fps: int = 8):
 
 @app.function(
     image=image,
-    gpu=modal.gpu.L4(),  # L4 GPU for efficient SD3.5 inference
+    gpu="L4",  # L4 GPU for efficient SD3.5 inference
     secrets=[modal.Secret.from_name("hf-token")],  # Hugging Face token from Modal secret
     volumes={
         "/videos": volume,
