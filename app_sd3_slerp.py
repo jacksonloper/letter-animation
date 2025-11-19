@@ -115,7 +115,7 @@ def slerp(t: float, z0, z1):
     return result.reshape(original_shape)
 
 
-def write_video(frames: List, out_path: str, fps: int = 8):
+def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bool = False):
     """
     Write a list of PIL images to an MP4 video file using OpenCV.
     
@@ -123,6 +123,7 @@ def write_video(frames: List, out_path: str, fps: int = 8):
         frames: List of PIL Image objects
         out_path: Output path for the video file
         fps: Frames per second for the video
+        save_debug_frames: If True, save first and last frames as PNGs to the same directory
     """
     import cv2
     import numpy as np
@@ -130,9 +131,18 @@ def write_video(frames: List, out_path: str, fps: int = 8):
     if not frames:
         raise ValueError("No frames to write")
     
-    # Get dimensions from first frame
+    # Get dimensions from first frame - PIL Image.size returns (width, height)
     first_frame = frames[0]
-    height, width = first_frame.size[1], first_frame.size[0]
+    width, height = first_frame.size
+    
+    # Save debug frames if requested
+    if save_debug_frames:
+        out_dir = os.path.dirname(out_path)
+        first_frame_path = os.path.join(out_dir, "debug_frame_first.png")
+        last_frame_path = os.path.join(out_dir, "debug_frame_last.png")
+        frames[0].save(first_frame_path)
+        frames[-1].save(last_frame_path)
+        print(f"Debug frames saved: {first_frame_path}, {last_frame_path}")
     
     # Create VideoWriter with H.264 codec
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -173,6 +183,7 @@ def generate_slerp_video(
     guidance_scale: float = 3.5,
     fps: int = 8,
     output_name: str = "sd3_slerp.mp4",
+    save_debug_frames: bool = False,
 ) -> str:
     """
     Generate a SLERP video using Stable Diffusion 3.5 Medium.
@@ -195,6 +206,7 @@ def generate_slerp_video(
         guidance_scale: Classifier-free guidance scale
         fps: Frames per second for output video
         output_name: Name of output video file
+        save_debug_frames: If True, save first and last frames as PNGs
     
     Returns:
         Absolute path to the generated video in the container
@@ -267,7 +279,7 @@ def generate_slerp_video(
     
     # Write video to the mounted volume
     output_path = f"/videos/{output_name}"
-    write_video(frames, output_path, fps=fps)
+    write_video(frames, output_path, fps=fps, save_debug_frames=save_debug_frames)
     
     # Commit the volume to persist the video
     volume.commit()
@@ -288,6 +300,7 @@ def main(
     num_inference_steps: int = 28,
     guidance_scale: float = 3.5,
     fps: int = 8,
+    save_debug_frames: bool = False,
 ):
     """
     Local entrypoint for generating SD3.5 SLERP videos.
@@ -297,6 +310,8 @@ def main(
     
     After completion, download the video with:
         modal volume get sd3-slerp-videos <output_name> <local_path>
+    
+    For debugging, use --save-debug-frames to save first and last frames as PNGs.
     """
     print(f"Starting SD3.5 SLERP video generation...")
     print(f"Prompt: {prompt}")
@@ -317,6 +332,7 @@ def main(
         guidance_scale=guidance_scale,
         fps=fps,
         output_name=output_name,
+        save_debug_frames=save_debug_frames,
     )
     
     print(f"\n✅ Video generation complete!")
