@@ -73,15 +73,17 @@ modal volume ls sd3-slerp-videos
 
 ## How It Works
 
-1. **Latent Generation**: Creates two deterministic latent noise vectors from different random seeds
-2. **SLERP Interpolation**: Performs spherical linear interpolation between the latents in the normalized vector space
-3. **Image Generation**: For each interpolated latent, runs the SD3.5 pipeline to generate an image
-4. **Video Creation**: Combines all frames into an MP4 video using OpenCV and ffmpeg
+1. **Model Caching**: Downloads and caches SD3.5 weights (~10GB) in a Modal volume on first run, reusing them on subsequent runs
+2. **Latent Generation**: Creates two deterministic latent noise vectors from different random seeds
+3. **SLERP Interpolation**: Performs spherical linear interpolation between the latents in the normalized vector space
+4. **Image Generation**: For each interpolated latent, runs the SD3.5 pipeline to generate an image
+5. **Video Creation**: Combines all frames into an MP4 video using OpenCV and ffmpeg
 
 ## Technical Details
 
 - **Model**: Stable Diffusion 3.5 Large (can be switched to `-large-turbo` variant in the code)
 - **GPU**: Runs on Modal A10G GPU
+- **Model Caching**: Weights cached in `sd3-model-cache` Modal volume (persists across runs)
 - **Latent Space**: 16 channels, 8x downsampling (128x128 latents for 1024x1024 images)
 - **Video Codec**: H.264 (MP4 container)
 - **Storage**: Persistent Modal volume (`sd3-slerp-videos`)
@@ -91,7 +93,9 @@ modal volume ls sd3-slerp-videos
 - Generation time depends on `num_frames` and `num_inference_steps`
 - Typical generation: ~30 seconds per frame on A10G
 - 16 frames with 28 steps: approximately 8-10 minutes total
-- First run includes model download time (~10GB)
+- **First run**: Includes model download time (~10GB, 5-10 minutes depending on network)
+- **Subsequent runs**: Model loaded from cache (much faster startup)
+- Model weights are automatically cached in `sd3-model-cache` volume
 
 ## Troubleshooting
 

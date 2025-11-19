@@ -18,6 +18,9 @@ app = modal.App("sd3-slerp-video")
 # Create a Modal volume for storing generated videos
 volume = modal.Volume.from_name("sd3-slerp-videos", create_if_missing=True)
 
+# Create a Modal volume for caching model weights (avoids re-downloading ~10GB on each run)
+model_cache_volume = modal.Volume.from_name("sd3-model-cache", create_if_missing=True)
+
 # Define the container image with all dependencies
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -152,7 +155,10 @@ def write_video(frames: List, out_path: str, fps: int = 8):
     image=image,
     gpu=modal.gpu.A10G(),  # A10G GPU for efficient SD3.5 inference
     secrets=[modal.Secret.from_name("hf-token")],  # Hugging Face token from Modal secret
-    volumes={"/videos": volume},
+    volumes={
+        "/videos": volume,
+        "/model_cache": model_cache_volume,  # Cache SD3.5 weights to avoid re-downloading
+    },
     timeout=1800,  # 30 minutes timeout
 )
 def generate_slerp_video(
@@ -204,12 +210,19 @@ def generate_slerp_video(
     if not hf_token:
         raise ValueError("HF_TOKEN not found in environment. Ensure 'hf-token' secret is configured.")
     
+    # Use cached model weights from Modal volume to avoid re-downloading ~10GB on each run
+    cache_dir = "/model_cache"
+    
     pipe = StableDiffusion3Pipeline.from_pretrained(
         model_id,
         torch_dtype=torch.float16,
         token=hf_token,
+        cache_dir=cache_dir,
     )
     pipe = pipe.to("cuda")
+    
+    # Commit the cache volume to persist downloaded weights for future runs
+    model_cache_volume.commit()
     
     print(f"Generating {num_frames} frames with SLERP interpolation...")
     
