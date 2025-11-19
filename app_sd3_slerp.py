@@ -154,7 +154,7 @@ def write_video(frames: List, out_path: str, fps: int = 8):
 
 @app.function(
     image=image,
-    gpu="L4",  # L4 GPU for efficient SD3.5 inference
+    gpu=modal.gpu.L4(count=1),  # L4 GPU for efficient SD3.5 inference
     secrets=[modal.Secret.from_name("hf-token")],  # Hugging Face token from Modal secret
     volumes={
         "/videos": volume,
@@ -202,6 +202,14 @@ def generate_slerp_video(
     import torch
     from diffusers import StableDiffusion3Pipeline
     
+    # Check if CUDA is available
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is not available. This function requires a GPU. "
+            "Make sure the Modal function is configured with gpu parameter."
+        )
+    
+    print(f"Using GPU: {torch.cuda.get_device_name(0)}")
     print("Loading Stable Diffusion 3.5 Medium model...")
     # Note: Can also use "stabilityai/stable-diffusion-3.5-large" for higher quality (requires more VRAM)
     # or "stabilityai/stable-diffusion-3.5-large-turbo" for faster inference
