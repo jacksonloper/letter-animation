@@ -81,7 +81,7 @@ modal volume ls sd3-slerp-videos
 
 ## Technical Details
 
-- **Model**: Stable Diffusion 3.5 Large (can be switched to `-large-turbo` variant in the code)
+- **Model**: Stable Diffusion 3.5 Medium (can be switched to `-large` or `-large-turbo` variants for different quality/speed tradeoffs)
 - **GPU**: Runs on Modal L4 GPU
 - **Model Caching**: Weights cached in `sd3-model-cache` Modal volume (persists across runs)
 - **Latent Space**: 16 channels, 8x downsampling (128x128 latents for 1024x1024 images)

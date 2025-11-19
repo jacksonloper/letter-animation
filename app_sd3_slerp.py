@@ -175,7 +175,7 @@ def generate_slerp_video(
     output_name: str = "sd3_slerp.mp4",
 ) -> str:
     """
-    Generate a SLERP video using Stable Diffusion 3.5 Large.
+    Generate a SLERP video using Stable Diffusion 3.5 Medium.
     
     This function:
     1. Loads the SD3.5 pipeline using HF_TOKEN from Modal secret
@@ -202,9 +202,10 @@ def generate_slerp_video(
     import torch
     from diffusers import StableDiffusion3Pipeline
     
-    print("Loading Stable Diffusion 3.5 Large model...")
-    # Note: Can also use "stabilityai/stable-diffusion-3.5-large-turbo" for faster inference
-    model_id = "stabilityai/stable-diffusion-3.5-large"
+    print("Loading Stable Diffusion 3.5 Medium model...")
+    # Note: Can also use "stabilityai/stable-diffusion-3.5-large" for higher quality (requires more VRAM)
+    # or "stabilityai/stable-diffusion-3.5-large-turbo" for faster inference
+    model_id = "stabilityai/stable-diffusion-3.5-medium"
     
     # Load the model using HF_TOKEN from Modal secret (env var HF_TOKEN)
     hf_token = os.environ.get("HF_TOKEN")
