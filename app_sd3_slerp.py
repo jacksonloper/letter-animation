@@ -32,7 +32,7 @@ image = (
         "transformers>=4.30.0",
         "accelerate>=0.20.0",
         "safetensors>=0.4.0",
-        "opencv-python-headless>=4.8.0",
+        "imageio[ffmpeg]>=2.31.0",
         "Pillow>=10.0.0",
         "sentencepiece>=0.1.99",  # Required for SD3.5 tokenizer
     )
@@ -115,9 +115,68 @@ def slerp(t: float, z0, z1):
     return result.reshape(original_shape)
 
 
+def ellipse_slerp(t: float, z0, z1, origin=None):
+    """
+    Spherical linear interpolation along an ellipse in latent space.
+    
+    Creates an ellipse centered at the origin (or computed center) where z0 and z1
+    are two sample points on the ellipse. Traverses the full ellipse for smooth looping.
+    
+    Args:
+        t: Interpolation parameter in [0, 1], where 0 and 1 represent the same point
+        z0: First sample point on the ellipse (at angle 0)
+        z1: Second sample point on the ellipse (defines ellipse shape)
+        origin: Center of the ellipse. If None, uses the midpoint between z0 and z1
+    
+    Returns:
+        Interpolated latent tensor on the ellipse
+    """
+    import torch
+    import math
+    
+    # Store original shape
+    original_shape = z0.shape
+    
+    # Flatten to vectors
+    v0 = z0.flatten()
+    v1 = z1.flatten()
+    
+    # Compute or use provided origin
+    if origin is None:
+        # Use midpoint as center for a symmetric ellipse
+        v_origin = (v0 + v1) / 2.0
+    else:
+        v_origin = origin.flatten()
+    
+    # Translate to origin-centered coordinates
+    u0 = v0 - v_origin
+    u1 = v1 - v_origin
+    
+    # Compute angle for full ellipse traversal (0 to 2*pi)
+    angle = 2 * math.pi * t
+    
+    # Normalize the basis vectors to define the ellipse axes
+    # u0 defines the first axis (at angle 0)
+    # u1 defines a point on the ellipse, we compute the perpendicular component
+    
+    # Project u1 onto u0 to get the component parallel to u0
+    u0_norm_sq = torch.dot(u0, u0) + 1e-10
+    projection = (torch.dot(u1, u0) / u0_norm_sq) * u0
+    
+    # Get the perpendicular component (defines the second axis)
+    u1_perp = u1 - projection
+    
+    # Compute point on ellipse using parametric form:
+    # E(t) = origin + cos(angle)*axis1 + sin(angle)*axis2
+    result = v_origin + torch.cos(torch.tensor(angle)) * u0 + torch.sin(torch.tensor(angle)) * u1_perp
+    
+    # Reshape back to original shape
+    return result.reshape(original_shape)
+
+
 def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bool = False, output_tar_path: str = None):
     """
-    Write a list of PIL images to an MP4 video file using OpenCV.
+    Write a list of PIL images to an MP4 video file using imageio.
     
     Args:
         frames: List of PIL Image objects
@@ -126,17 +185,13 @@ def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bo
         save_debug_frames: If True, save first and last frames as PNGs to the same directory
         output_tar_path: If provided, save all frames as PNGs in a tar.gz archive at this path
     """
-    import cv2
     import numpy as np
+    import imageio
     import tarfile
     import tempfile
     
     if not frames:
         raise ValueError("No frames to write")
-    
-    # Get dimensions from first frame - PIL Image.size returns (width, height)
-    first_frame = frames[0]
-    width, height = first_frame.size
     
     # Save debug frames if requested
     if save_debug_frames:
@@ -151,12 +206,10 @@ def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bo
     if output_tar_path:
         print(f"Creating tar.gz archive with all frames at {output_tar_path}...")
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Save all frames as PNGs
             for i, frame in enumerate(frames):
                 frame_path = os.path.join(tmpdir, f"frame_{i:04d}.png")
                 frame.save(frame_path)
             
-            # Create tar.gz archive
             with tarfile.open(output_tar_path, "w:gz") as tar:
                 for i in range(len(frames)):
                     frame_filename = f"frame_{i:04d}.png"
@@ -165,40 +218,20 @@ def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bo
             
             print(f"Tar.gz archive saved: {output_tar_path} ({len(frames)} frames)")
     
-    # Create VideoWriter with H.264/AVC1 codec
-    # Try multiple codec options for better compatibility
-    codecs_to_try = [
-        ('avc1', 'H.264/AVC1'),
-        ('H264', 'H.264'),
-        ('X264', 'x264'),
-        ('mp4v', 'MPEG-4'),
-    ]
+    # Convert PIL images to numpy arrays
+    frames_np = [np.array(frame.convert("RGB")) for frame in frames]
     
-    writer = None
-    used_codec = None
+    # Write video using imageio with H.264 codec
+    # CRF 23 is the default for x264 (good quality, reasonable size)
+    imageio.mimsave(
+        out_path,
+        frames_np,
+        fps=fps,
+        codec='libx264',
+        pixelformat='yuv420p',
+        output_params=['-crf', '23'],
+    )
     
-    for fourcc_str, codec_name in codecs_to_try:
-        fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
-        test_writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
-        if test_writer.isOpened():
-            writer = test_writer
-            used_codec = codec_name
-            print(f"Using codec: {codec_name} ({fourcc_str})")
-            break
-        else:
-            test_writer.release()
-    
-    if writer is None or not writer.isOpened():
-        raise RuntimeError(f"Failed to open video writer for {out_path} - no compatible codec found")
-    
-    # Convert PIL images to OpenCV format and write
-    for frame in frames:
-        # Convert PIL RGB to OpenCV BGR
-        frame_np = np.array(frame.convert("RGB"))
-        frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
-        writer.write(frame_bgr)
-    
-    writer.release()
     print(f"Video saved to {out_path}")
 
 
@@ -225,6 +258,7 @@ def generate_slerp_video(
     output_name: str = "sd3_slerp.mp4",
     save_debug_frames: bool = False,
     output_tar_name: str = None,
+    use_ellipse: bool = True,
 ) -> str:
     """
     Generate a SLERP video using Stable Diffusion 3.5 Medium.
@@ -232,7 +266,7 @@ def generate_slerp_video(
     This function:
     1. Loads the SD3.5 pipeline using HF_TOKEN from Modal secret
     2. Generates two deterministic latent endpoints (z0, z1) from different seeds
-    3. Interpolates between them using SLERP
+    3. Interpolates between them using SLERP or ellipse interpolation
     4. Runs SD3.5 pipeline for each interpolated latent
     5. Saves the resulting images as an MP4 video
     
@@ -240,8 +274,8 @@ def generate_slerp_video(
         prompt: Text prompt for image generation
         height: Image height in pixels
         width: Image width in pixels
-        seed0: Random seed for first latent endpoint
-        seed1: Random seed for second latent endpoint
+        seed0: Random seed for first latent sample point
+        seed1: Random seed for second latent sample point
         num_frames: Number of frames to interpolate
         num_inference_steps: Number of diffusion steps
         guidance_scale: Classifier-free guidance scale
@@ -249,6 +283,7 @@ def generate_slerp_video(
         output_name: Name of output video file
         save_debug_frames: If True, save first and last frames as PNGs
         output_tar_name: If provided, save all frames as PNGs in a tar.gz archive
+        use_ellipse: If True, traverse full ellipse for smooth looping (default: True)
     
     Returns:
         Absolute path to the generated video in the container
@@ -288,9 +323,9 @@ def generate_slerp_video(
     # Commit the cache volume to persist downloaded weights for future runs
     model_cache_volume.commit()
     
-    print(f"Generating {num_frames} frames with SLERP interpolation...")
+    print(f"Generating {num_frames} frames with {'ellipse' if use_ellipse else 'linear SLERP'} interpolation...")
     
-    # Generate two deterministic latent endpoints from different seeds
+    # Generate two deterministic latent sample points from different seeds
     z0 = rand_latent(pipe, height, width, seed0)
     z1 = rand_latent(pipe, height, width, seed1)
     
@@ -302,8 +337,11 @@ def generate_slerp_video(
     for i, alpha in enumerate(alphas):
         print(f"Generating frame {i+1}/{num_frames} (alpha={alpha:.3f})...")
         
-        # Perform SLERP in latent space
-        lat = slerp(alpha.item(), z0, z1)
+        # Perform interpolation in latent space
+        if use_ellipse:
+            lat = ellipse_slerp(alpha.item(), z0, z1)
+        else:
+            lat = slerp(alpha.item(), z0, z1)
         
         # Run the pipeline with the interpolated latent
         output = pipe(
@@ -352,6 +390,7 @@ def main(
     fps: int = 8,
     save_debug_frames: bool = False,
     output_tar_name: str = None,
+    use_ellipse: bool = True,
 ):
     """
     Local entrypoint for generating SD3.5 SLERP videos.
@@ -361,6 +400,12 @@ def main(
     
     With tar.gz archive of all frames:
         modal run app_sd3_slerp.py --output-tar-name "frames.tar.gz"
+    
+    With ellipse interpolation for smooth looping (default):
+        modal run app_sd3_slerp.py --use-ellipse
+    
+    With linear SLERP (original behavior):
+        modal run app_sd3_slerp.py --no-use-ellipse
     
     After completion, download the video with:
         modal volume get sd3-slerp-videos <output_name> <local_path>
@@ -373,6 +418,7 @@ def main(
     print(f"Resolution: {width}x{height}")
     print(f"Frames: {num_frames} at {fps} FPS")
     print(f"Seeds: {seed0} -> {seed1}")
+    print(f"Interpolation: {'Ellipse (full loop)' if use_ellipse else 'Linear SLERP'}")
     if output_tar_name:
         print(f"Tar.gz archive: {output_tar_name}")
     
@@ -390,6 +436,7 @@ def main(
         output_name=output_name,
         save_debug_frames=save_debug_frames,
         output_tar_name=output_tar_name,
+        use_ellipse=use_ellipse,
     )
     
     print(f"\n✅ Video generation complete!")
