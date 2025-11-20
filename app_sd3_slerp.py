@@ -165,12 +165,31 @@ def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bo
             
             print(f"Tar.gz archive saved: {output_tar_path} ({len(frames)} frames)")
     
-    # Create VideoWriter with H.264 codec
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+    # Create VideoWriter with H.264/AVC1 codec
+    # Try multiple codec options for better compatibility
+    codecs_to_try = [
+        ('avc1', 'H.264/AVC1'),
+        ('H264', 'H.264'),
+        ('X264', 'x264'),
+        ('mp4v', 'MPEG-4'),
+    ]
     
-    if not writer.isOpened():
-        raise RuntimeError(f"Failed to open video writer for {out_path}")
+    writer = None
+    used_codec = None
+    
+    for fourcc_str, codec_name in codecs_to_try:
+        fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
+        test_writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+        if test_writer.isOpened():
+            writer = test_writer
+            used_codec = codec_name
+            print(f"Using codec: {codec_name} ({fourcc_str})")
+            break
+        else:
+            test_writer.release()
+    
+    if writer is None or not writer.isOpened():
+        raise RuntimeError(f"Failed to open video writer for {out_path} - no compatible codec found")
     
     # Convert PIL images to OpenCV format and write
     for frame in frames:
