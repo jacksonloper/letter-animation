@@ -115,7 +115,7 @@ def slerp(t: float, z0, z1):
     return result.reshape(original_shape)
 
 
-def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bool = False):
+def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bool = False, output_tar_path: str = None):
     """
     Write a list of PIL images to an MP4 video file using OpenCV.
     
@@ -124,9 +124,12 @@ def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bo
         out_path: Output path for the video file
         fps: Frames per second for the video
         save_debug_frames: If True, save first and last frames as PNGs to the same directory
+        output_tar_path: If provided, save all frames as PNGs in a tar.gz archive at this path
     """
     import cv2
     import numpy as np
+    import tarfile
+    import tempfile
     
     if not frames:
         raise ValueError("No frames to write")
@@ -143,6 +146,24 @@ def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bo
         frames[0].save(first_frame_path)
         frames[-1].save(last_frame_path)
         print(f"Debug frames saved: {first_frame_path}, {last_frame_path}")
+    
+    # Save all frames as tar.gz if requested
+    if output_tar_path:
+        print(f"Creating tar.gz archive with all frames at {output_tar_path}...")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Save all frames as PNGs
+            for i, frame in enumerate(frames):
+                frame_path = os.path.join(tmpdir, f"frame_{i:04d}.png")
+                frame.save(frame_path)
+            
+            # Create tar.gz archive
+            with tarfile.open(output_tar_path, "w:gz") as tar:
+                for i in range(len(frames)):
+                    frame_filename = f"frame_{i:04d}.png"
+                    frame_path = os.path.join(tmpdir, frame_filename)
+                    tar.add(frame_path, arcname=frame_filename)
+            
+            print(f"Tar.gz archive saved: {output_tar_path} ({len(frames)} frames)")
     
     # Create VideoWriter with H.264 codec
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -184,6 +205,7 @@ def generate_slerp_video(
     fps: int = 8,
     output_name: str = "sd3_slerp.mp4",
     save_debug_frames: bool = False,
+    output_tar_name: str = None,
 ) -> str:
     """
     Generate a SLERP video using Stable Diffusion 3.5 Medium.
@@ -207,6 +229,7 @@ def generate_slerp_video(
         fps: Frames per second for output video
         output_name: Name of output video file
         save_debug_frames: If True, save first and last frames as PNGs
+        output_tar_name: If provided, save all frames as PNGs in a tar.gz archive
     
     Returns:
         Absolute path to the generated video in the container
@@ -279,11 +302,19 @@ def generate_slerp_video(
     
     # Write video to the mounted volume
     output_path = f"/videos/{output_name}"
-    write_video(frames, output_path, fps=fps, save_debug_frames=save_debug_frames)
+    
+    # Prepare tar.gz path if output_tar_name is provided
+    output_tar_path = None
+    if output_tar_name:
+        output_tar_path = f"/videos/{output_tar_name}"
+    
+    write_video(frames, output_path, fps=fps, save_debug_frames=save_debug_frames, output_tar_path=output_tar_path)
     
     # Commit the volume to persist the video
     volume.commit()
     print(f"Video saved and volume committed: {output_path}")
+    if output_tar_name:
+        print(f"Tar.gz archive saved and volume committed: {output_tar_path}")
     
     return output_path
 
@@ -301,12 +332,16 @@ def main(
     guidance_scale: float = 3.5,
     fps: int = 8,
     save_debug_frames: bool = False,
+    output_tar_name: str = None,
 ):
     """
     Local entrypoint for generating SD3.5 SLERP videos.
     
     Usage:
         modal run app_sd3_slerp.py --prompt "your prompt here" --output-name "my_video.mp4"
+    
+    With tar.gz archive of all frames:
+        modal run app_sd3_slerp.py --output-tar-name "frames.tar.gz"
     
     After completion, download the video with:
         modal volume get sd3-slerp-videos <output_name> <local_path>
@@ -319,6 +354,8 @@ def main(
     print(f"Resolution: {width}x{height}")
     print(f"Frames: {num_frames} at {fps} FPS")
     print(f"Seeds: {seed0} -> {seed1}")
+    if output_tar_name:
+        print(f"Tar.gz archive: {output_tar_name}")
     
     # Call the remote function
     video_path = generate_slerp_video.remote(
@@ -333,9 +370,14 @@ def main(
         fps=fps,
         output_name=output_name,
         save_debug_frames=save_debug_frames,
+        output_tar_name=output_tar_name,
     )
     
     print(f"\n✅ Video generation complete!")
     print(f"Video saved to Modal volume at: {video_path}")
     print(f"\nTo download the video, run:")
     print(f"  modal volume get sd3-slerp-videos {output_name} ./{output_name}")
+    
+    if output_tar_name:
+        print(f"\nTo download the tar.gz archive, run:")
+        print(f"  modal volume get sd3-slerp-videos {output_tar_name} ./{output_tar_name}")
