@@ -56,6 +56,18 @@ modal run app_sd3_slerp.py \
 - `--num-inference-steps`: Diffusion steps per frame (default: 28)
 - `--guidance-scale`: CFG scale (default: 3.5)
 - `--fps`: Video framerate (default: 8)
+- `--save-debug-frames`: Save first and last frames as PNGs (default: false)
+- `--output-tar-name`: Save all frames as tar.gz archive (default: None)
+
+### Debugging and Alternative Output
+
+If you encounter video encoding issues (e.g., pure green video) but want to access the individual frames, use the `--output-tar-name` option:
+
+```bash
+modal run app_sd3_slerp.py --output-tar-name "frames.tar.gz"
+```
+
+This creates a compressed archive containing all frames as PNG files (frame_0000.png, frame_0001.png, etc.), which can be downloaded and inspected or re-encoded using different tools.
 
 ## Downloading Results
 
