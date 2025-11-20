@@ -329,8 +329,9 @@ def generate_slerp_video(
     z0 = rand_latent(pipe, height, width, seed0)
     z1 = rand_latent(pipe, height, width, seed1)
     
-    # Sample interpolation values in [0, 1]
-    alphas = torch.linspace(0, 1, num_frames)
+    # Sample interpolation values in [0, 1)
+    # endpoint=False ensures first and last frames are not identical for seamless looping
+    alphas = torch.linspace(0, 1, num_frames, endpoint=False)
     
     frames = []
     
