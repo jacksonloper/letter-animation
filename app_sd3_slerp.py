@@ -118,58 +118,39 @@ def slerp(t: float, z0, z1):
 def ellipse_slerp(t: float, z0, z1, origin=None):
     """
     Spherical linear interpolation along an ellipse in latent space.
-    
-    Creates an ellipse centered at the origin (or computed center) where z0 and z1
+
+    Creates an ellipse centered at the origin where z0 and z1
     are two sample points on the ellipse. Traverses the full ellipse for smooth looping.
-    
+
     Args:
         t: Interpolation parameter in [0, 1], where 0 and 1 represent the same point
         z0: First sample point on the ellipse (at angle 0)
         z1: Second sample point on the ellipse (defines ellipse shape)
-        origin: Center of the ellipse. If None, uses the midpoint between z0 and z1
-    
+        origin: Unused (kept for API compatibility)
+
     Returns:
         Interpolated latent tensor on the ellipse
     """
     import torch
     import math
-    
+
     # Store original shape
     original_shape = z0.shape
-    
+
     # Flatten to vectors
     v0 = z0.flatten()
     v1 = z1.flatten()
-    
-    # Compute or use provided origin
-    if origin is None:
-        # Use midpoint as center for a symmetric ellipse
-        v_origin = (v0 + v1) / 2.0
-    else:
-        v_origin = origin.flatten()
-    
-    # Translate to origin-centered coordinates
-    u0 = v0 - v_origin
-    u1 = v1 - v_origin
-    
+
     # Compute angle for full ellipse traversal (0 to 2*pi)
     angle = 2 * math.pi * t
-    
-    # Normalize the basis vectors to define the ellipse axes
-    # u0 defines the first axis (at angle 0)
-    # u1 defines a point on the ellipse, we compute the perpendicular component
-    
-    # Project u1 onto u0 to get the component parallel to u0
-    u0_norm_sq = torch.dot(u0, u0) + 1e-10
-    projection = (torch.dot(u1, u0) / u0_norm_sq) * u0
-    
-    # Get the perpendicular component (defines the second axis)
-    u1_perp = u1 - projection
-    
+
     # Compute point on ellipse using parametric form:
-    # E(t) = origin + cos(angle)*axis1 + sin(angle)*axis2
-    result = v_origin + torch.cos(torch.tensor(angle)) * u0 + torch.sin(torch.tensor(angle)) * u1_perp
-    
+    # E(t) = cos(angle)*v0 + sin(angle)*v1
+    # This creates an ellipse passing through v0 (at t=0), v1 (at t=0.25), -v0 (at t=0.5), -v1 (at t=0.75)
+    # Create angle tensor on same device as v0
+    angle_tensor = torch.tensor(angle, device=v0.device, dtype=v0.dtype)
+    result = torch.cos(angle_tensor) * v0 + torch.sin(angle_tensor) * v1
+
     # Reshape back to original shape
     return result.reshape(original_shape)
 
