@@ -243,7 +243,7 @@ def write_video(frames: List, out_path: str, fps: int = 8, save_debug_frames: bo
         "/videos": volume,
         "/model_cache": model_cache_volume,  # Cache SD3.5 weights to avoid re-downloading
     },
-    timeout=1800,  # 30 minutes timeout
+    timeout=86400,  # 24 hours timeout
 )
 def generate_slerp_video(
     prompt: str = "highly detailed illustration of a floating city at sunset",
