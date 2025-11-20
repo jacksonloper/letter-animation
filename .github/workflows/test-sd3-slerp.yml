@@ -50,22 +50,29 @@ jobs:
       - name: Test SD3 SLERP app with minimal config
         run: |
           # Run with just 2 frames for quick testing
+          # Use github-debug.mp4 for debugging and save debug frames
           modal run app_sd3_slerp.py \
             --prompt "test image" \
-            --output-name "ci_test.mp4" \
+            --output-name "github-debug.mp4" \
             --num-frames 2 \
             --num-inference-steps 10 \
             --width 512 \
-            --height 512
+            --height 512 \
+            --save-debug-frames
       
       - name: Verify output
         run: |
           # Check that the video was created in the Modal volume
-          modal volume ls sd3-slerp-videos | grep ci_test.mp4 || \
+          modal volume ls sd3-slerp-videos | grep github-debug.mp4 || \
           (echo "Video file not found in Modal volume" && exit 1)
+          
+          # Check that debug frames were created
+          modal volume ls sd3-slerp-videos | grep debug_frame_first.png || \
+          (echo "First debug frame not found in Modal volume" && exit 1)
+          modal volume ls sd3-slerp-videos | grep debug_frame_last.png || \
+          (echo "Last debug frame not found in Modal volume" && exit 1)
+          
+          echo "All files created successfully (video and debug frames)"
       
-      - name: Cleanup test artifacts
-        if: always()
-        run: |
-          # Clean up test video from Modal volume
-          modal volume rm sd3-slerp-videos ci_test.mp4 || true
+      # Note: We intentionally do NOT clean up github-debug.mp4 or debug frames
+      # This allows for manual inspection of test results for debugging purposes
