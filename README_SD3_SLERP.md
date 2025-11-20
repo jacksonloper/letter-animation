@@ -50,12 +50,36 @@ modal run app_sd3_slerp.py \
 - `--output-name`: Output video filename (default: "sd3_slerp.mp4")
 - `--height`: Image height in pixels (default: 1024)
 - `--width`: Image width in pixels (default: 1024)
-- `--seed0`: Starting random seed (default: 1234)
-- `--seed1`: Ending random seed (default: 5678)
+- `--seed0`: First random seed for ellipse/interpolation (default: 1234)
+- `--seed1`: Second random seed for ellipse/interpolation (default: 5678)
 - `--num-frames`: Number of frames to generate (default: 16)
 - `--num-inference-steps`: Diffusion steps per frame (default: 28)
 - `--guidance-scale`: CFG scale (default: 3.5)
 - `--fps`: Video framerate (default: 8)
+- `--save-debug-frames`: Save first and last frames as PNGs (default: false)
+- `--output-tar-name`: Save all frames as tar.gz archive (default: None)
+- `--use-ellipse`: Use ellipse interpolation for smooth looping (default: true)
+- `--no-use-ellipse`: Use linear SLERP instead of ellipse
+
+### Ellipse Interpolation
+
+By default, the video traverses a full ellipse in latent space where the two seed points define the ellipse shape. This creates smooth, seamless loops perfect for continuous playback. The ellipse is centered at the midpoint between the two seed latents.
+
+To use the original linear SLERP behavior (interpolates directly between the two points):
+
+```bash
+modal run app_sd3_slerp.py --no-use-ellipse
+```
+
+### Debugging and Alternative Output
+
+If you encounter video encoding issues (e.g., pure green video) but want to access the individual frames, use the `--output-tar-name` option:
+
+```bash
+modal run app_sd3_slerp.py --output-tar-name "frames.tar.gz"
+```
+
+This creates a compressed archive containing all frames as PNG files (frame_0000.png, frame_0001.png, etc.), which can be downloaded and inspected or re-encoded using different tools.
 
 ## Downloading Results
 
