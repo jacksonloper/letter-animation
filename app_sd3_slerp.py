@@ -115,18 +115,19 @@ def slerp(t: float, z0, z1):
     return result.reshape(original_shape)
 
 
-def ellipse_slerp(t: float, z0, z1, origin=None):
+def ellipse_slerp(t: float, z0, z1, origin=None, ellipse_proportion: float = 1.0):
     """
     Spherical linear interpolation along an ellipse in latent space.
 
     Creates an ellipse centered at the origin where z0 and z1
-    are two sample points on the ellipse. Traverses the full ellipse for smooth looping.
+    are two sample points on the ellipse. Can traverse full ellipse or a portion of it.
 
     Args:
-        t: Interpolation parameter in [0, 1], where 0 and 1 represent the same point
+        t: Interpolation parameter in [0, 1]
         z0: First sample point on the ellipse (at angle 0)
         z1: Second sample point on the ellipse (defines ellipse shape)
         origin: Unused (kept for API compatibility)
+        ellipse_proportion: Proportion of ellipse to traverse (default 1.0 for full 2π)
 
     Returns:
         Interpolated latent tensor on the ellipse
@@ -141,8 +142,8 @@ def ellipse_slerp(t: float, z0, z1, origin=None):
     v0 = z0.flatten()
     v1 = z1.flatten()
 
-    # Compute angle for full ellipse traversal (0 to 2*pi)
-    angle = 2 * math.pi * t
+    # Compute angle based on ellipse proportion (0 to 2*pi*ellipse_proportion)
+    angle = 2 * math.pi * t * ellipse_proportion
 
     # Compute point on ellipse using parametric form:
     # E(t) = cos(angle)*v0 + sin(angle)*v1
@@ -240,17 +241,19 @@ def generate_slerp_video(
     save_debug_frames: bool = False,
     output_tar_name: str = None,
     use_ellipse: bool = True,
+    ellipse_proportion: float = 1.0,
+    model_id: str = "stabilityai/stable-diffusion-3.5-large",
 ) -> str:
     """
-    Generate a SLERP video using Stable Diffusion 3.5 Medium.
-    
+    Generate a SLERP video using Stable Diffusion 3.5.
+
     This function:
     1. Loads the SD3.5 pipeline using HF_TOKEN from Modal secret
     2. Generates two deterministic latent endpoints (z0, z1) from different seeds
     3. Interpolates between them using SLERP or ellipse interpolation
     4. Runs SD3.5 pipeline for each interpolated latent
     5. Saves the resulting images as an MP4 video
-    
+
     Args:
         prompt: Text prompt for image generation
         height: Image height in pixels
@@ -264,8 +267,10 @@ def generate_slerp_video(
         output_name: Name of output video file
         save_debug_frames: If True, save first and last frames as PNGs
         output_tar_name: If provided, save all frames as PNGs in a tar.gz archive
-        use_ellipse: If True, traverse full ellipse for smooth looping (default: True)
-    
+        use_ellipse: If True, traverse ellipse for smooth looping (default: True)
+        ellipse_proportion: Proportion of ellipse to traverse (default: 1.0 for full 2π, 0.25 for π/2, etc.)
+        model_id: Hugging Face model ID (default: "stabilityai/stable-diffusion-3.5-large")
+
     Returns:
         Absolute path to the generated video in the container
     """
@@ -280,10 +285,7 @@ def generate_slerp_video(
         )
     
     print(f"Using GPU: {torch.cuda.get_device_name(0)}")
-    print("Loading Stable Diffusion 3.5 Medium model...")
-    # Note: Can also use "stabilityai/stable-diffusion-3.5-large" for higher quality (requires more VRAM)
-    # or "stabilityai/stable-diffusion-3.5-large-turbo" for faster inference
-    model_id = "stabilityai/stable-diffusion-3.5-medium"
+    print(f"Loading model: {model_id}...")
     
     # Load the model using HF_TOKEN from Modal secret (env var HF_TOKEN)
     hf_token = os.environ.get("HF_TOKEN")
@@ -295,11 +297,12 @@ def generate_slerp_video(
     
     pipe = StableDiffusion3Pipeline.from_pretrained(
         model_id,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         token=hf_token,
         cache_dir=cache_dir,
     )
-    pipe = pipe.to("cuda")
+    # Enable CPU offload to reduce VRAM usage for large models
+    pipe.enable_model_cpu_offload()
     
     # Commit the cache volume to persist downloaded weights for future runs
     model_cache_volume.commit()
@@ -321,7 +324,7 @@ def generate_slerp_video(
         
         # Perform interpolation in latent space
         if use_ellipse:
-            lat = ellipse_slerp(alpha.item(), z0, z1)
+            lat = ellipse_slerp(alpha.item(), z0, z1, ellipse_proportion=ellipse_proportion)
         else:
             lat = slerp(alpha.item(), z0, z1)
         
@@ -361,7 +364,7 @@ def generate_slerp_video(
 @app.local_entrypoint()
 def main(
     prompt: str = "highly detailed illustration of a floating city at sunset",
-    output_name: str = "sd3_slerp.mp4",
+    output_name: str | None = None,
     height: int = 1024,
     width: int = 1024,
     seed0: int = 1234,
@@ -373,37 +376,59 @@ def main(
     save_debug_frames: bool = False,
     output_tar_name: str = None,
     use_ellipse: bool = True,
+    ellipse_proportion: float = 1.0,
+    model_id: str = "stabilityai/stable-diffusion-3.5-large",
 ):
     """
     Local entrypoint for generating SD3.5 SLERP videos.
-    
+
     Usage:
         modal run app_sd3_slerp.py --prompt "your prompt here" --output-name "my_video.mp4"
-    
+
     With tar.gz archive of all frames:
         modal run app_sd3_slerp.py --output-tar-name "frames.tar.gz"
-    
+
     With ellipse interpolation for smooth looping (default):
         modal run app_sd3_slerp.py --use-ellipse
-    
+
+    With partial ellipse traversal (e.g., quarter ellipse from 0 to π/2):
+        modal run app_sd3_slerp.py --ellipse-proportion 0.25
+
     With linear SLERP (original behavior):
         modal run app_sd3_slerp.py --no-use-ellipse
-    
+
     After completion, download the video with:
         modal volume get sd3-slerp-videos <output_name> <local_path>
-    
+
     For debugging, use --save-debug-frames to save first and last frames as PNGs.
     """
+    # Validate that custom prompt requires custom output name
+    default_prompt = "highly detailed illustration of a floating city at sunset"
+
+    if output_name is None:
+        # User didn't specify output name
+        if prompt != default_prompt:
+            raise ValueError(
+                "Custom prompt provided but no output name specified. "
+                "Please specify --output-name to avoid overwriting previous outputs."
+            )
+        # Using default prompt, so use default output name
+        output_name = "sd3_slerp.mp4"
+
     print(f"Starting SD3.5 SLERP video generation...")
+    print(f"Model: {model_id}")
     print(f"Prompt: {prompt}")
     print(f"Output: {output_name}")
     print(f"Resolution: {width}x{height}")
     print(f"Frames: {num_frames} at {fps} FPS")
     print(f"Seeds: {seed0} -> {seed1}")
-    print(f"Interpolation: {'Ellipse (full loop)' if use_ellipse else 'Linear SLERP'}")
+    if use_ellipse:
+        print(f"Interpolation: Ellipse (proportion: {ellipse_proportion:.2f})")
+    else:
+        print(f"Interpolation: Linear SLERP")
     if output_tar_name:
         print(f"Tar.gz archive: {output_tar_name}")
-    
+
     # Call the remote function
     video_path = generate_slerp_video.remote(
         prompt=prompt,
@@ -419,6 +444,8 @@ def main(
         save_debug_frames=save_debug_frames,
         output_tar_name=output_tar_name,
         use_ellipse=use_ellipse,
+        ellipse_proportion=ellipse_proportion,
+        model_id=model_id,
     )
     
     print(f"\n✅ Video generation complete!")
